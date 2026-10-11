@@ -103,7 +103,13 @@ cp "$WORK/util/rnx2rtkp/noauth.nmea" "$OUTDIR/ref_L6_AUTH_noauth.nmea"
 echo "=== Packaging claslib_cma_testdata.tar.gz ==="
 cp "$OBS" "$L6D" "$L6E" "$WORK/pkg/"
 cp "$DATADIR"/pubkey/CMA_*.der "$WORK/pkg/pubkey/"
-COPYFILE_DISABLE=1 tar czf "$OUTDIR/claslib_cma_testdata.tar.gz" -C "$WORK/pkg" \
+# macOS bsdtar would otherwise add AppleDouble ._* members and
+# com.apple.* xattr pax headers (GNU tar warns on extraction).
+TAR_OPTS=()
+if tar --version 2>/dev/null | grep -q bsdtar; then
+    TAR_OPTS=(--no-xattrs --no-mac-metadata)
+fi
+COPYFILE_DISABLE=1 tar "${TAR_OPTS[@]}" -czf "$OUTDIR/claslib_cma_testdata.tar.gz" -C "$WORK/pkg" \
     0627044J.bnx 2023044J.l6d 2023044J.l6e pubkey cma_dump
 
 echo ""
