@@ -34,6 +34,30 @@ CLASLIB_GIT="$MRTKLIB_ROOT/upstream/claslib"
 OUTDIR="$MRTKLIB_ROOT/tests/data/claslib"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
+LOGDIR="$WORK/logs"
+mkdir -p "$LOGDIR"
+
+# run <label> <cmd...>: log stdout/stderr; on failure show the log tail before
+# the EXIT trap removes $WORK.
+run() {
+    local label="$1"; shift
+    if ! "$@" >"$LOGDIR/$label.log" 2>&1; then
+        echo "ERROR: step '$label' failed (exit $?). Last 40 lines of log:" >&2
+        tail -n 40 "$LOGDIR/$label.log" >&2
+        exit 1
+    fi
+}
+
+# require_nonempty <file...>: upstream tools can exit 0 without output.
+require_nonempty() {
+    local f
+    for f in "$@"; do
+        if [ ! -s "$f" ]; then
+            echo "ERROR: expected output '$f' is missing or empty" >&2
+            exit 1
+        fi
+    done
+}
 
 MACFLAGS="-Wall -O3 -DTRACE -DENAGAL -DENAQZS -DNFREQ=3 -DLAPACK -D_DARWIN_C_SOURCE -std=c99"
 MACFLAGS="$MACFLAGS -I../../seclib/include -I../../src"
@@ -44,12 +68,12 @@ DATADIR="$WORK/data"
 
 echo "=== Building rnx2rtkp (ENA_CSSR_AUTH) ==="
 cd "$WORK/util/rnx2rtkp"
-make CFLAGS="$MACFLAGS -DENA_PPP_RTK -DENA_REL_VRS -DENA_CSSR_AUTH" >/dev/null 2>&1
+run build_rnx2rtkp make CFLAGS="$MACFLAGS -DENA_PPP_RTK -DENA_REL_VRS -DENA_CSSR_AUTH"
 sed $'s/\r$//' kinematic.conf | sed 's|\\|/|g' > kinematic_mac.conf
 
 echo "=== Building ssr2osr ==="
 cd "$WORK/util/ssr2osr"
-make CFLAGS="$MACFLAGS -DENA_SSR2OSR" >/dev/null 2>&1
+run build_ssr2osr make CFLAGS="$MACFLAGS -DENA_SSR2OSR"
 
 # test_L6_auth (util/rnx2rtkp/makefile).  Trace level 0: the trace file is not
 # part of the reference.  Upstream prints wall-clock time in "first recieve"
@@ -61,17 +85,20 @@ L6D="$DATADIR/2023044J.l6d"
 L6E="$DATADIR/2023044J.l6e"
 
 echo "=== Running test_L6_auth (authentication on) ==="
-./rnx2rtkp "${OPTT[@]}" -k kinematic_mac.conf "$OBS" "$L6D" "$L6E" -o auth.nmea >/dev/null 2>&1
+run rnx2rtkp_auth ./rnx2rtkp "${OPTT[@]}" -k kinematic_mac.conf "$OBS" "$L6D" "$L6E" -o auth.nmea
 echo "=== Running baseline (no .l6e -> authentication off) ==="
-./rnx2rtkp "${OPTT[@]}" -k kinematic_mac.conf "$OBS" "$L6D" -o noauth.nmea >/dev/null 2>&1
-
-cp auth.nmea "$OUTDIR/ref_L6_AUTH.nmea"
-cp auth_auth.nmea "$OUTDIR/ref_L6_AUTH_auth.nmea"
-cp noauth.nmea "$OUTDIR/ref_L6_AUTH_noauth.nmea"
+run rnx2rtkp_noauth ./rnx2rtkp "${OPTT[@]}" -k kinematic_mac.conf "$OBS" "$L6D" -o noauth.nmea
+require_nonempty auth.nmea auth_auth.nmea noauth.nmea
 
 echo "=== Dumping L6E (ssr2osr -dump) ==="
 mkdir -p "$WORK/pkg/cma_dump" "$WORK/pkg/pubkey"
-(cd "$WORK/pkg/cma_dump" && "$WORK/util/ssr2osr/ssr2osr" -dump "$L6E" >/dev/null 2>&1)
+(cd "$WORK/pkg/cma_dump" && run ssr2osr_dump "$WORK/util/ssr2osr/ssr2osr" -dump "$L6E")
+require_nonempty "$WORK/pkg/cma_dump"/parse_l6e_{header,type13_1,type13_3,type13_11}.csv
+
+# Write to tests/data only after every step has succeeded.
+cp "$WORK/util/rnx2rtkp/auth.nmea" "$OUTDIR/ref_L6_AUTH.nmea"
+cp "$WORK/util/rnx2rtkp/auth_auth.nmea" "$OUTDIR/ref_L6_AUTH_auth.nmea"
+cp "$WORK/util/rnx2rtkp/noauth.nmea" "$OUTDIR/ref_L6_AUTH_noauth.nmea"
 
 echo "=== Packaging claslib_cma_testdata.tar.gz ==="
 cp "$OBS" "$L6D" "$L6E" "$WORK/pkg/"
