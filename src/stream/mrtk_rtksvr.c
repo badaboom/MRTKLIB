@@ -22,6 +22,7 @@
 
 #include "mrtklib/mrtk_coords.h"
 #include "mrtklib/mrtk_eph.h"
+#include "mrtklib/mrtk_l6.h"
 #include "mrtklib/mrtk_madoca.h"
 #include "mrtklib/mrtk_madoca_local_corr.h"
 #include "mrtklib/mrtk_mat.h"
@@ -496,8 +497,8 @@ static int decoderaw(rtksvr_t* svr, int index) {
                  * assembly stays coherent across a satellite handover (#197).
                  * ch<0 means the frame is from a non-active PRN — drop it so the
                  * locked channel's subframe stream is not corrupted by mixing. */
-                int prn = svr->rtcm[index].buff[4];
-                int ptn = (svr->rtcm[index].buff[5] & 0x06) >> 1;
+                l6_header_t hdr;
+                l6_parse_header(svr->rtcm[index].buff, &hdr);
                 /* current rover observation time drives the demux re-lock
                  * timeout. The rover decodes into raw[0] (receiver-raw formats)
                  * or rtcm[0] (RTCM2/3); pick whichever is fresher so the clock
@@ -507,7 +508,7 @@ static int decoderaw(rtksvr_t* svr, int index) {
                 if (!now.time || (svr->rtcm[0].time.time && timediff(svr->rtcm[0].time, now) > 0)) {
                     now = svr->rtcm[0].time;
                 }
-                ch = clas_route_l6frame(svr->clas, prn, ptn, svr->rtk.opt.l6mrg, now);
+                ch = clas_route_l6frame(svr->clas, hdr.prn, hdr.ptn, svr->rtk.opt.l6mrg, now);
                 if (ch < 0) {
                     continue;
                 }
