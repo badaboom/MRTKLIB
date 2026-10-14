@@ -21,6 +21,8 @@ real; frame RS parity is not re-encoded because no decoder checks it):
                           MADOCA iono, not CLAS (D1)
     l6route_sbf_197.sbf   G5P3287a CLAS frames with L6 PRN and SBF SVID set
                           to QZS5 / PRN 197: must route as CLAS, not iono (D2)
+    l6route_sbf_src0.sbf  MCLA286e 4069 CLAS blocks with SBF Source = 0
+                          (unknown): must route as CLAS and still set ephsat
 
 Usage (from the repository root):
     python3 scripts/tests/make_l6_route_fixtures.py --g5 G5P3287a.sbf \\
@@ -173,6 +175,17 @@ def rewrap_sbf_prn(blocks, prn):
     return bytes(out)
 
 
+def rewrap_sbf_source(blocks, source):
+    """Set the SBF QZSRawL6 Source field; recompute CRC."""
+    out = bytearray()
+    for blk in blocks:
+        b = bytearray(blk)
+        b[17] = source
+        struct.pack_into("<H", b, 2, crc16_ccitt(bytes(b[4:])))
+        out += b
+    return bytes(out)
+
+
 def split_blocks(data):
     return [blk for _, blk in sbf_blocks(data)]
 
@@ -205,6 +218,9 @@ def main():
         rewrap_sbf_prn(split_blocks(clas), 197),
         Counter({"CLAS": N_SYNTH}),
     )
+
+    mcla, mcla_counts = fixtures["l6route_mcla.sbf"]
+    fixtures["l6route_sbf_src0.sbf"] = (rewrap_sbf_source(split_blocks(mcla), 0), mcla_counts)
 
     for name, (data, counts) in fixtures.items():
         with open(os.path.join(OUTDIR, name), "wb") as fp:

@@ -326,6 +326,22 @@ static void update_lcl(rtksvr_t* svr, int index) {
 
     svr->nmsg[index][11]++;
 }
+/* SSR ownership of nav.ssr_ch[0] ---------------------------------------------
+ * In CLAS/PPP-RTK mode the CLAS decoder owns nav->ssr_ch[0]: MADOCA-PPP SSR
+ * must not overwrite the CLAS biases, whether it comes from a mixed UBX/SBF
+ * L6D+L6E stream (code 15) or a raw L6E stream (STRFMT_L6E, code 10). In
+ * PPP/MADOCA mode svr->clas is NULL and MADOCA SSR is applied like any other
+ * ssr_ch[0] source; RTCM3 SSR (code 10) is applied in every mode.
+ *-----------------------------------------------------------------------------*/
+extern int rtksvr_ssr_applicable(const rtksvr_t* svr, int index, int ret) {
+    if (!svr->clas) {
+        return 1;
+    }
+    if (ret == 15) {
+        return 0;
+    }
+    return !(ret == 10 && svr->format[index] == STRFMT_L6E);
+}
 /* update rtk server struct --------------------------------------------------*/
 static void update_svr(rtksvr_t* svr, int ret, obs_t* obs, nav_t* nav, int ephsat, int ephset, sbsmsg_t* sbsmsg,
                        int index, int iobs) {
@@ -343,16 +359,8 @@ static void update_svr(rtksvr_t* svr, int ret, obs_t* obs, nav_t* nav, int ephsa
         update_antpos(svr, index);
     } else if (ret == 7) { /* dgps correction */
         svr->nmsg[index][5]++;
-    } else if (ret == 10) { /* ssr message */
-        /* a raw L6E stream only carries MADOCA-PPP; in CLAS/PPP-RTK mode the
-         * CLAS decoder owns nav->ssr_ch[0] (same rule as code 15 below) */
-        if (!(svr->clas && svr->format[index] == STRFMT_L6E)) update_ssr(svr, index);
-    } else if (ret == 15) { /* MADOCA L6E SSR (raw SBF/UBX) */
-        /* Apply only outside CLAS/PPP-RTK mode: there the CLAS decoder owns
-         * nav->ssr_ch[0], so a mixed mosaic-G5 stream (L6D + L6E) must not let
-         * MADOCA L6E overwrite the CLAS biases. In PPP/MADOCA mode svr->clas is
-         * NULL and the L6E SSR is applied like any other ssr_ch[0] source. */
-        if (!svr->clas) update_ssr(svr, index);
+    } else if (ret == 10 || ret == 15) { /* ssr message / MADOCA L6E SSR (raw SBF/UBX) */
+        if (rtksvr_ssr_applicable(svr, index, ret)) update_ssr(svr, index);
     } else if (ret == 17) { /* QZNMA L6 frame (UBX/SBF): no consumer until CMA (#353) */
         svr->nmsg[index][8]++;
     } else if (ret == 11) { /* stat message */

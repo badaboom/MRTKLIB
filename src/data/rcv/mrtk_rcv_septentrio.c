@@ -1099,7 +1099,7 @@ static int decode_qzsrawl1ca(raw_t* raw) { return decode_rawca(raw, SYS_QZS); }
 static int decode_qzsrawl6(raw_t* raw, rtcm_t* rtcm) {
     gtime_t time;
     double tow;
-    int prn, sat, week, i, j;
+    int prn, sat, week, i, j, ret;
     unsigned char svid, parity, rscnt, source, rxchannel;
     uint8_t* p = (raw->buff) + 8; /* jump to TOW location */
     unsigned char buff[256];
@@ -1150,10 +1150,11 @@ static int decode_qzsrawl6(raw_t* raw, rtcm_t* rtcm) {
      * or the satellite PRN: L6E PRNs time-multiplex MADOCA-PPP and QZNMA, and
      * PRN 197 carries CLAS (IS-QZSS-MDC rev 002), not MADOCA iono. Source
      * (1=L6D, 2=L6E) only decides the legacy handling of null messages. */
-    if (source == 1) {
-        raw->ephsat = sat; /* CLAS satellite for redirect / cssr2rtcm3 filtering */
+    ret = decode_qzss_l6frame(rtcm, source == 1);
+    if (ret == 10 || ret == 16) {
+        raw->ephsat = sat; /* L6D satellite for redirect / cssr2rtcm3 filtering */
     }
-    return decode_qzss_l6frame(rtcm, source == 1);
+    return ret;
 }
 /* decode SBF NavIC/IRNSS subframe -------------------------------------------*/
 static int decode_navicraw(raw_t* raw) {
