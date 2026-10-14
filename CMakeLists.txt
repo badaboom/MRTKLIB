@@ -350,6 +350,17 @@ add_test(NAME utest_l6_header COMMAND utest_l6_header
          WORKING_DIRECTORY ${_UTEST_DIR})
 set_tests_properties(utest_l6_header PROPERTIES LABELS "utest")
 
+# QZSS L6 frame routing in the UBX/SBF decoders (issue #351 PR-B). Fixtures
+# tests/utest/l6route_*: short real SBF/UBX slices plus re-wrapped real frames
+# (scripts/tests/make_l6_route_fixtures.py).
+add_executable(utest_l6_route ${_UTEST_DIR}/utest_l6_route.c)
+# Override global -ansi (=C90): this test uses C11 (P-01).
+target_compile_options(utest_l6_route PRIVATE -std=c11)
+target_link_libraries(utest_l6_route PRIVATE mrtklib)
+add_test(NAME utest_l6_route COMMAND utest_l6_route
+         WORKING_DIRECTORY ${_UTEST_DIR})
+set_tests_properties(utest_l6_route PROPERTIES LABELS "utest")
+
 # NTRIP v2 chunked codec test (header-only, no library dependency)
 add_executable(t_ntrip ${_UTEST_DIR}/t_ntrip.c)
 # Override global -ansi (=C90) for this target, same as mrtklib target.
