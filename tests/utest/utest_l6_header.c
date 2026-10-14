@@ -8,7 +8,10 @@
  *       header field);
  *   (2) service classification per IS-QZSS-SAS-001 Table 6-8 and
  *       IS-QZSS-MDC-004 Table 4.2.1-3: vendor 101b -> CLAS, 010b/CSID0 ->
- *       MADOCA, 010b/CSID1 -> MADOCA iono, 011b -> QZNMA, others -> UNKNOWN;
+ *       MADOCA, 010b/CSID1 -> MADOCA iono, 011b -> QZNMA, others -> UNKNOWN.
+ *       The same rule is also checked for every message type ID x alert x
+ *       L6 PRN (193..211, incl. 197/200/201 and L6E PRNs), so the
+ *       classification is shown to be PRN-independent;
  *   (3) null message (IS-QZSS-L6-008 4.1.2.3) and its near misses;
  *   (4) bad preamble;
  *   (5) one real subframe-head frame per service from mosaic-G5 captures
@@ -108,6 +111,47 @@ static void test_classify(void) {
     printf("ok  : classification (%d cases)\n", (int)(sizeof(c) / sizeof(c[0])));
 }
 
+/* (2b) classification for every message type ID, alert value and L6 PRN:
+ * expected service from IS-QZSS-SAS-001 Table 6-8 (vendor ID) and
+ * IS-QZSS-MDC-004 Table 4.2.1-3 (CSID), independent of the PRN byte */
+static void test_classify_exhaustive(void) {
+    static const uint8_t prns[] = {193, 194, 195, 196, 197, 199, 200, 201, 204, 205, 209, 210, 211};
+    uint8_t f[L6_FRAME_LEN];
+    l6_header_t h;
+    int msgid, alert, vid, bad = 0, nnull = 0, seen[6] = {0};
+    size_t k;
+
+    for (k = 0; k < sizeof(prns); k++) {
+        for (msgid = 0; msgid < 256; msgid++) {
+            for (alert = 0; alert < 2; alert++) {
+                l6_service_t exp;
+                vid = msgid >> 5;
+                if (vid == 5) {
+                    exp = L6_SVC_CLAS;
+                } else if (vid == 2) {
+                    exp = (msgid & 0x04) ? L6_SVC_MADOCA_IONO : L6_SVC_MADOCA;
+                } else if (vid == 3) {
+                    exp = L6_SVC_QZNMA;
+                } else {
+                    exp = L6_SVC_UNKNOWN; /* reserved 000b/001b/100b/110b/111b */
+                }
+                make_frame(f, prns[k], (uint8_t)msgid, alert, 0x5C); /* non-null payload */
+                if (l6_parse_header(f, &h) != 1 || h.svc != exp) bad++;
+                seen[h.svc]++;
+            }
+        }
+        /* the null message is NULL whatever the PRN */
+        make_frame(f, prns[k], 0x00, 1, 0xAA);
+        if (l6_parse_header(f, &h) == 1 && h.svc == L6_SVC_NULL) nnull++;
+    }
+    CHECK(bad == 0, "service matches vendor ID + CSID for all msgid x alert x PRN");
+    CHECK(nnull == (int)sizeof(prns), "null message classified NULL for every PRN");
+    CHECK(seen[L6_SVC_UNKNOWN] && seen[L6_SVC_CLAS] && seen[L6_SVC_MADOCA] && seen[L6_SVC_MADOCA_IONO] &&
+              seen[L6_SVC_QZNMA],
+          "every non-null service reached");
+    printf("ok  : classification exhaustive (%d mismatches)\n", bad);
+}
+
 /* (3) null message and near misses */
 static void test_null(void) {
     uint8_t f[L6_FRAME_LEN];
@@ -165,7 +209,11 @@ static void test_real_frames(void) {
         CHECK(0, "open l6_frames.bin");
         return;
     }
-    CHECK(fread(buf, 1, sizeof(buf), fp) == sizeof(buf), "read 4 real frames");
+    if (fread(buf, 1, sizeof(buf), fp) != sizeof(buf)) {
+        CHECK(0, "read 4 real frames");
+        fclose(fp);
+        return;
+    }
     fclose(fp);
 
     for (k = 0; k < 4; k++) {
@@ -182,6 +230,7 @@ static void test_real_frames(void) {
 int main(void) {
     test_fields_exhaustive();
     test_classify();
+    test_classify_exhaustive();
     test_null();
     test_bad_preamble();
     test_real_frames();
