@@ -8,6 +8,8 @@
 #include "mrtklib/mrtk_l6.h"
 
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 /* nominal L6 PRN assignments (see l6_prn_info_t). MADOCA iono regions:
  * PRN 200 Philippines/Indonesia/western Australia, PRN 201 Japan/eastern
@@ -92,6 +94,37 @@ extern int l6_service_expected(const l6_header_t* h) {
         return h->svc == L6_SVC_MADOCA || h->svc == L6_SVC_QZNMA;
     }
     return h->svc == info->svc;
+}
+
+extern l6_service_t l6_file_service(const char* file) {
+    l6_service_t svc = L6_SVC_UNKNOWN;
+    l6_header_t hdr;
+    uint8_t* buf;
+    FILE* fp;
+    size_t n, i;
+
+    if (!(fp = fopen(file, "rb"))) {
+        return L6_SVC_UNKNOWN;
+    }
+    if (!(buf = (uint8_t*)malloc(L6_FILE_SCAN_BYTES))) {
+        fclose(fp);
+        return L6_SVC_UNKNOWN;
+    }
+    n = fread(buf, 1, L6_FILE_SCAN_BYTES, fp);
+    fclose(fp);
+
+    for (i = 0; i + L6_FRAME_LEN <= n; i++) {
+        if (!l6_parse_header(buf + i, &hdr)) {
+            continue;
+        }
+        if (hdr.svc != L6_SVC_NULL && hdr.svc != L6_SVC_UNKNOWN) {
+            svc = hdr.svc;
+            break;
+        }
+        i += L6_FRAME_LEN - 1; /* null / reserved frame: skip to the next one */
+    }
+    free(buf);
+    return svc;
 }
 
 extern const char* l6_service_name(l6_service_t svc) {
