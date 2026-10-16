@@ -312,16 +312,6 @@ static void update_rtcm(gtime_t time) {
         block2stat(rtcm, &navs.stat);
     }
 }
-/* QZSS L6 file extension: 0 none, 1 .l6, 2 .l6d, 3 .l6e (either case) -------*/
-static int l6_file_ext(const char* file) {
-    const char* ext = strrchr(file, '.');
-
-    if (!ext) return 0;
-    if (!strcmp(ext, ".l6") || !strcmp(ext, ".L6")) return 1;
-    if (!strcmp(ext, ".l6d") || !strcmp(ext, ".L6D")) return 2;
-    if (!strcmp(ext, ".l6e") || !strcmp(ext, ".L6E")) return 3;
-    return 0;
-}
 /* update QZSS L6E MADOCA-PPP corrections ------------------------------------*/
 static void update_qzssl6e(gtime_t time) {
     static int init_flg = 1;
@@ -993,7 +983,7 @@ static void readpreceph(char** infile, int n, const prcopt_t* prcopt, nav_t* nav
     }
     /* read precise clock files */
     for (i = 0; i < n; i++) {
-        if (strstr(infile[i], "%r") || strstr(infile[i], "%b") || l6_file_ext(infile[i])) {
+        if (strstr(infile[i], "%r") || strstr(infile[i], "%b") || l6_file_type(infile[i])) {
             continue;
         }
         readrnxc(infile[i], nav);
@@ -1080,9 +1070,10 @@ static void readpreceph(char** infile, int n, const prcopt_t* prcopt, nav_t* nav
                         strstr(prcopt->pppopt, "-clas") != NULL;
 
         for (i = 0; i < n; i++) {
-            int type = l6_file_ext(infile[i]), is_l6d = type == 2, is_l6e = type == 3, iono;
+            l6_file_type_t type = l6_file_type(infile[i]);
+            int is_l6d = type == L6_FILE_L6D, is_l6e = type == L6_FILE_L6E, iono;
 
-            if (!type) {
+            if (type == L6_FILE_NONE) {
                 continue;
             }
             ext = strrchr(infile[i], '.');
@@ -1240,7 +1231,7 @@ static int readobsnav(gtime_t ts, gtime_t te, double ti, char** infile, const in
             ind = index[i];
             nobs = obs->n;
         }
-        if (l6_file_ext(infile[i])) {
+        if (l6_file_type(infile[i])) {
             continue; /* QZSS L6 frames, not RINEX (".l6d" would also trip the
                        * Hatanaka 4th-char-'d' test in rtk_uncompress) */
         }
@@ -1918,7 +1909,7 @@ static int execses_b(mrtk_ctx_t* ctx, gtime_t ts, gtime_t te, double ti, const p
  *              .sp3,.SP3,.eph*,.EPH*: precise ephemeris (sp3c)
  *              .sbs,.SBS,.ems,.EMS  : sbas message log files (rtklib or ems)
  *              .rtcm3,.RTCM3        : ssr message log files (rtcm3)
- *              .l6,.l6d,.l6e (any case): QZSS L6 frame files (CLAS, MADOCA-PPP)
+ *              .l6,.l6d,.l6e        : QZSS L6 frame files, case-insensitive (CLAS, MADOCA-PPP)
  *              .*i,.*I              : tec grid files (ionex)
  *              others               : rinex obs, nav, gnav, hnav, qnav or clock
  *
@@ -1995,7 +1986,7 @@ extern int postpos(mrtk_ctx_t* ctx, gtime_t ts, gtime_t te, double ti, double tu
             for (j = k = nf = 0; j < n; j++) {
                 ext = strrchr(infile[j], '.');
 
-                if ((ext && (!strcmp(ext, ".rtcm3") || !strcmp(ext, ".RTCM3"))) || l6_file_ext(infile[j])) {
+                if ((ext && (!strcmp(ext, ".rtcm3") || !strcmp(ext, ".RTCM3"))) || l6_file_type(infile[j])) {
                     strcpy(ifile[nf++], infile[j]);
                 } else {
                     /* include next day precise ephemeris or rinex brdc nav */

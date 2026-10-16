@@ -138,6 +138,21 @@ const l6_prn_info_t* l6_prn_info(int prn);
  */
 int l6_service_expected(const l6_header_t* h);
 
+/** @brief QZSS L6 file type from the file name extension. */
+typedef enum {
+    L6_FILE_NONE = 0, /**< not an L6 file */
+    L6_FILE_L6,       /**< ".l6" (legacy: CLAS L6D or MADOCA-PPP L6E) */
+    L6_FILE_L6D,      /**< ".l6d" */
+    L6_FILE_L6E       /**< ".l6e" */
+} l6_file_type_t;
+
+/**
+ * @brief Classify a file name by its QZSS L6 extension (case-insensitive).
+ * @param[in] file  File path or name.
+ * @return L6 file type, L6_FILE_NONE if the extension is not .l6/.l6d/.l6e.
+ */
+l6_file_type_t l6_file_type(const char* file);
+
 /**
  * @brief Service of an L6 frame file, from the first non-null frame header.
  *
