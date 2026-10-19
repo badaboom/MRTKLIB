@@ -316,6 +316,11 @@ Verified on the full SBF: J204/J205/J209, **3660 frames each, 250-byte frames
 with the 0x1ACFFC1D preamble**, and one extracted file (J204) drives a
 `mrtk post` MADOCA-PPP smoke run to Q=6 float solutions.
 
+> Since v0.7.12 ([#362](https://github.com/h-shiono/MRTKLIB/issues/362))
+> l6extract takes the signal and PRN from the L6 frame header (the 4271
+> header PRN is already the L6E PRN 204/205/209), and the files are named
+> `{prefix}.{PRN}.l6e` (e.g. `l6.204.l6e`).
+
 ### 11.4 Future work
 
 - **Real-time HAS replay ctest** (rtkrcv file replay). Not added here: the

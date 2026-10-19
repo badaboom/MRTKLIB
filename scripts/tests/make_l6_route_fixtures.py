@@ -23,6 +23,16 @@ real; frame RS parity is not re-encoded because no decoder checks it):
                           to QZS5 / PRN 197: must route as CLAS, not iono (D2)
     l6route_sbf_src0.sbf  MCLA286e 4069 CLAS blocks with SBF Source = 0
                           (unknown): must route as CLAS and still set ephsat
+    l6route_sbf_211.sbf   G5P3287a 4271 MADOCA frames with L6 PRN set to 211
+                          (QZS7 L6E, SBF SVID of the L6D satellite 201):
+                          l6extract must keep PRNs above 209 (#362)
+    l6route_ubx_l6e.ubx   G5P3287a L6E frames (PRN 205: MADOCA, QZNMA) as
+                          UBX-RXM-QZSSL6 on an L6E channel with the satellite
+                          svId (195): l6extract must name them by the header
+                          PRN 205, not the svId (#362)
+
+The last two are consumed by the l6extract ctests (scripts/tests/
+check_l6extract.py), not by utest_l6_route.
 
 Usage (from the repository root):
     python3 scripts/tests/make_l6_route_fixtures.py --g5 G5P3287a.sbf \\
@@ -149,11 +159,11 @@ def slice_ubx(path, n):
     return bytes(out), counts
 
 
-def wrap_ubx_l6d(frames, svid):
-    """UBX-RXM-QZSSL6 (version 0x00, L6D channel 0, error-free) per frame."""
+def wrap_ubx_l6(frames, svid, l6e=0):
+    """UBX-RXM-QZSSL6 (version 0x00, channel 0, error-free) per frame."""
     out = bytearray()
     for k, f in enumerate(frames):
-        chinfo = (1 << 12) | (0 << 10) | (0 << 8)  # errStatus=1, msgName=L6D, ch0
+        chinfo = (1 << 12) | (l6e << 10) | (0 << 8)  # errStatus=1, msgName, ch0
         payload = struct.pack("<BBHIBBH", 0, svid, 45 * 256, 1000 * k, 0, 0, chinfo)
         payload += b"\x00\x00" + f[:RAW_LEN]
         body = b"\x02\x73" + struct.pack("<H", len(payload)) + payload
@@ -161,12 +171,13 @@ def wrap_ubx_l6d(frames, svid):
     return bytes(out)
 
 
-def rewrap_sbf_prn(blocks, prn):
-    """Set L6 header PRN (frame byte 4) and SBF SVID to `prn`; recompute CRC."""
+def rewrap_sbf_prn(blocks, prn, sat_prn=None):
+    """Set L6 header PRN (frame byte 4) to `prn` and SBF SVID to the satellite
+    `sat_prn` (default `prn`); recompute CRC."""
     out = bytearray()
     for blk in blocks:
         b = bytearray(blk)
-        b[14] = prn - 192 + 180  # SVID (decode_qzsrawl6: prn = svid - 180 + 192)
+        b[14] = (sat_prn or prn) - 192 + 180  # SVID (decode_qzsrawl6: prn = svid - 180 + 192)
         word0 = bytearray(struct.pack(">I", struct.unpack_from("<I", b, 24)[0]))
         word0[0] = prn  # frame byte 4 = first byte of NAVBits word 1
         b[24:28] = struct.pack("<I", struct.unpack(">I", bytes(word0))[0])
@@ -210,7 +221,7 @@ def main():
 
     iono_frames = [sbf_frame(b) for b in split_blocks(fixtures["l6route_iono.sbf"][0])]
     fixtures["l6route_ubx_iono.ubx"] = (
-        wrap_ubx_l6d(iono_frames, 200 - 192),
+        wrap_ubx_l6(iono_frames, 200 - 192),
         Counter({"MADOCA-IONO": len(iono_frames)}),
     )
     clas, _ = slice_sbf(args.g5, {4270}, N_SYNTH, want="CLAS")
@@ -221,6 +232,22 @@ def main():
 
     mcla, mcla_counts = fixtures["l6route_mcla.sbf"]
     fixtures["l6route_sbf_src0.sbf"] = (rewrap_sbf_source(split_blocks(mcla), 0), mcla_counts)
+
+    madoca, _ = slice_sbf(args.g5, {4271}, N_SYNTH, want="MADOCA")
+    fixtures["l6route_sbf_211.sbf"] = (
+        rewrap_sbf_prn(split_blocks(madoca), 211, sat_prn=201),
+        Counter({"MADOCA": N_SYNTH}),
+    )
+    l6e_blocks = [
+        b
+        for b in split_blocks(slice_sbf(args.g5, {4271}, 4 * N_SYNTH)[0])
+        if sbf_frame(b)[4] == 205
+    ]
+    l6e_frames = [sbf_frame(b) for b in l6e_blocks[:N_SYNTH]]
+    fixtures["l6route_ubx_l6e.ubx"] = (
+        wrap_ubx_l6(l6e_frames, 195 - 192, l6e=1),
+        Counter(classify(f) for f in l6e_frames),
+    )
 
     for name, (data, counts) in fixtures.items():
         with open(os.path.join(OUTDIR, name), "wb") as fp:

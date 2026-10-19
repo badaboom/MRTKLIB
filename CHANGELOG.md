@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **`mrtk l6extract` output file names changed
+  ([#362](https://github.com/h-shiono/MRTKLIB/issues/362)).** QZSS L6
+  frames are now written to `{prefix}.{PRN}.l6d` / `{prefix}.{PRN}.l6e`
+  (e.g. `l6.199.l6d`, `l6.205.l6e`) instead of
+  `{prefix}_J{PRN}_{l6d|l6e}.l6`. Scripts that pick up the old names must
+  be updated. The new names follow the official MADOCA L6E naming and are
+  read by `mrtk post` directly (`.l6d` is routed by content, so a
+  `*.200.l6d` / `*.201.l6d` file goes to the MADOCA iono decoder).
+  The signal (L6D/L6E) and PRN now come from the L6 frame header instead
+  of the receiver container, which fixes three misclassifications:
+  - mosaic-CLAS SBF block 4069 (L6D, `Source = 1`) was written as L6E;
+  - L6E header PRNs 210/211 (QZS6/QZS7) were dropped;
+  - UBX L6E frames were named by the satellite PRN (e.g. 195) instead of
+    the L6E PRN (205).
+  Frames with a bad L6 preamble are skipped and counted in the summary.
+  Galileo HAS `.has` output is unchanged.
+
 ## [v0.7.11] - 2026-09-29
 
 **MADOCA regression tests: build-independent upstream parity plus absolute

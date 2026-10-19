@@ -403,6 +403,14 @@ set(_COMPARE_POS_ABS  ${CMAKE_SOURCE_DIR}/scripts/tests/compare_pos_abs.py)
 set(_COMPARE_NMEA_ABS ${CMAKE_SOURCE_DIR}/scripts/tests/compare_nmea_abs.py)
 set(_CHECK_SCATTER    ${CMAKE_SOURCE_DIR}/scripts/tests/check_pos_scatter.py)
 
+# mrtk l6extract output names {prefix}.{PRN}.l6d|l6e and frame counts on the
+# tests/utest/l6route_* fixtures: signal and PRN come from the L6 header, not
+# the receiver container (#362).
+add_test(NAME l6extract_names
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/tests/check_l6extract.py
+        $<TARGET_FILE:mrtk> ${_UTEST_DIR} ${CMAKE_BINARY_DIR}/l6extract_names)
+set_tests_properties(l6extract_names PROPERTIES TIMEOUT 60 LABELS "utest")
+
 # ── Regression test data ─────────────────────────────────────────────────────
 set(_TESTDATA  ${CMAKE_SOURCE_DIR}/tests/data/malib)
 set(_REFDATA   ${CMAKE_SOURCE_DIR}/tests/data/malib)
