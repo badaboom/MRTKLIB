@@ -1678,10 +1678,13 @@ extern int decode_qzss_l6frame(rtcm_t* rtcm, int is_l6d) {
             ret = decode_qzss_l6emsg(rtcm);
             return ret == 10 ? 15 : ret;
         case L6_SVC_NULL:
-            /* null messages keep their pre-#351 path until #344 decides how
-             * CLAS handles them: L6D -> CLAS, L6E -> MADOCA (alert -> -1) */
+            /* L6D: dropped, so it never reaches the CLAS demux (msgid 0 would
+             * read as transmit pattern 0) nor the iono decoder (#344).
+             * L6E: the MADOCA decoder sees the alert flag and returns -1
+             * without clearing corrections (IS-QZSS-MDC-004 5.4.2). */
             if (is_l6d) {
-                return 10;
+                trace(NULL, 2, "L6 frame: null message prn=%d dropped\n", hdr.prn);
+                return 0;
             }
             ret = decode_qzss_l6emsg(rtcm);
             return ret == 10 ? 15 : ret;

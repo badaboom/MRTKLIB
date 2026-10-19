@@ -23,6 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the L6E PRN (205).
   Frames with a bad L6 preamble are skipped and counted in the summary.
   Galileo HAS `.has` output is unchanged.
+- **CLAS: L6 null messages are dropped
+  ([#344](https://github.com/h-shiono/MRTKLIB/issues/344)).** A null
+  message (message type ID 0, alert flag 1, data all `0xAA`; IS-QZSS-L6-008
+  5.4.4: CLAS must not be used) was spliced into the CLAS subframe being
+  assembled and, from a UBX/SBF receiver, routed to the CLAS demux as
+  transmit pattern 0. `clas_input_cssr()` now skips it without touching the
+  subframe assembly or the delivery state (as upstream claslib 0.9.0), and
+  UBX/SBF L6D null frames are no longer returned as CLAS frames. Corrections
+  already decoded are kept. L6E null frames still go to the MADOCA decoder,
+  which reports the alert without clearing corrections (IS-QZSS-MDC-004
+  5.4.2). No capture contains a null message, so the new ctests
+  `claslib_l6_null_drop_*` insert synthetic null frames into the 2019 and
+  2025 CLAS files and require `mrtk dump` output identical to the clean
+  file; `utest_l6_route` covers the receiver paths.
 
 ## [v0.7.11] - 2026-09-29
 
