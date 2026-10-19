@@ -1408,7 +1408,9 @@ extern void clas_update_global(nav_t* nav, const clas_corr_t* corr, int ch) {
                 ssr->cbias[i] = 0.0;
             }
             for (i = 0; i < MAXCODE; i++) {
-                if (corr->smode[sat - 1][i] != 0) {
+                /* signal mode from the CSSR signal mask: 1..MAXCODE; out of
+                 * range only on a corrupt mask (claslib 0.9.0 guards it too) */
+                if (corr->smode[sat - 1][i] >= 1 && corr->smode[sat - 1][i] <= MAXCODE) {
                     j = corr->smode[sat - 1][i] - 1;
                     ssr->cbias[j] = (float)corr->cbias[sat - 1][i];
                     ssr->pbias[j] = corr->pbias[sat - 1][i];
