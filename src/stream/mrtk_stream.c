@@ -3580,13 +3580,13 @@ extern int strstatx(stream_t* stream, char* msg) {
 /* get stream statistics summary -----------------------------------------------
  * get stream statistics summary
  * args   : stream_t *stream I   stream
- *          int    *inb      IO   bytes of input  (NULL: no output)
+ *          uint64_t *inb    IO   bytes of input  (NULL: no output)
  *          int    *inr      IO   bps of input    (NULL: no output)
- *          int    *outb     IO   bytes of output (NULL: no output)
+ *          uint64_t *outb   IO   bytes of output (NULL: no output)
  *          int    *outr     IO   bps of output   (NULL: no output)
  * return : none
  *-----------------------------------------------------------------------------*/
-extern void strsum(stream_t* stream, int* inb, int* inr, int* outb, int* outr) {
+extern void strsum(stream_t* stream, uint64_t* inb, int* inr, uint64_t* outb, int* outr) {
     tracet(NULL, 4, "strsum:\n");
 
     strlock(stream);

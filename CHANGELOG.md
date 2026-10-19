@@ -62,6 +62,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([#343](https://github.com/h-shiono/MRTKLIB/issues/343)). The
   `strwrite()` doc now states the byte-count return. New unit test
   `utest_stream_serial` (pseudo-terminal pair).
+- **Stream byte counters are 64-bit (public API change,
+  [#368](https://github.com/h-shiono/MRTKLIB/issues/368)).** The
+  `mrtk relay` status line went negative after 2 GiB and wrapped at 4 GiB
+  (a few days at ~100 kbps). `stream_t.inb` / `outb` / `inbt` / `outbt` are
+  now `uint64_t`, and the byte arguments of `strsum()` and `strsvrstat()`
+  change from `int*` to `uint64_t*`:
+  `void strsum(stream_t*, uint64_t* inb, int* inr, uint64_t* outb, int* outr)`,
+  `void strsvrstat(strsvr_t*, int* stat, int* log_stat, uint64_t* byte, int* bps, char* msg)`.
+  Code calling these functions must update its variables. The `mrtk run`
+  console `stream` command now reads the counters through `strsum()` (under
+  the stream lock) and prints them as unsigned 64-bit values, as does the
+  `mrtk relay` status line. New unit test `utest_stream_bytes`.
 
 ## [v0.7.11] - 2026-09-29
 

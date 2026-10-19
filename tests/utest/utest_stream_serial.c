@@ -15,6 +15,7 @@
  *-----------------------------------------------------------------------------*/
 #define _XOPEN_SOURCE 600 /* posix_openpt, grantpt, unlockpt, ptsname */
 #include <fcntl.h>
+#include <inttypes.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,11 +57,12 @@ static long drain(int master) {
 }
 
 /* busy port: fill the pty buffer, then check counts and state */
-static void test_busy(stream_t* s, int master, int outb0) {
+static void test_busy(stream_t* s, int master, uint64_t outb0) {
     uint8_t buf[NBUSY];
     char msg[256], smsg[MAXSTRMSG] = "";
     long sum = 0, got;
-    int i, ret, nshort = 0, nzero = 0, inb, inr, outb, outr, stat;
+    uint64_t inb, outb;
+    int i, ret, nshort = 0, nzero = 0, inr, outr, stat;
 
     memset(buf, 'B', sizeof(buf));
     for (i = 0; i < MAXBUSY && nzero < 3; i++) {
@@ -74,13 +76,13 @@ static void test_busy(stream_t* s, int master, int outb0) {
     strsum(s, &inb, &inr, &outb, &outr);
     got = drain(master);
 
-    printf("busy: written=%ld short=%d eagain=%d strstat=%d outb=%d received=%ld\n", sum, nshort, nzero, stat, outb,
-           got);
+    printf("busy: written=%ld short=%d eagain=%d strstat=%d outb=%" PRIu64 " received=%ld\n", sum, nshort, nzero, stat,
+           outb, got);
     CHECK(nzero > 0, "busy: the pty buffer filled up (EAGAIN reached)");
     snprintf(msg, sizeof(msg), "busy: strwrite returned %ld bytes, master received %ld", sum, got);
     CHECK(sum == got, msg);
-    snprintf(msg, sizeof(msg), "busy: strsum outb=%d, expected %ld", outb, (long)outb0 + sum);
-    CHECK((long)outb == (long)outb0 + sum, msg);
+    snprintf(msg, sizeof(msg), "busy: strsum outb=%" PRIu64 ", expected %" PRIu64, outb, outb0 + (uint64_t)sum);
+    CHECK(outb == outb0 + (uint64_t)sum, msg);
     snprintf(msg, sizeof(msg), "busy: strstat=%d, a full buffer must not mark the port failed", stat);
     CHECK(stat >= 0, msg);
 
@@ -97,7 +99,8 @@ int main(void) {
     uint8_t buf[NBYTE];
     char path[256], msg[256], smsg[MAXSTRMSG] = "";
     const char* name;
-    int master, i, ret, sum = 0, got = 0, inb, inr, outb, outr, stat;
+    uint64_t inb, outb;
+    int master, i, ret, sum = 0, got = 0, inr, outr, stat;
 
     if (!s || (master = posix_openpt(O_RDWR | O_NOCTTY)) < 0 || grantpt(master) || unlockpt(master) ||
         !(name = ptsname(master)) || strncmp(name, "/dev/", 5)) {
@@ -125,13 +128,13 @@ int main(void) {
     close(master);
     free(s);
 
-    printf("strwrite sum=%d strsum outb=%d strstat=%d received=%d\n", sum, outb, stat, got);
+    printf("strwrite sum=%d strsum outb=%" PRIu64 " strstat=%d received=%d\n", sum, outb, stat, got);
     snprintf(msg, sizeof(msg), "pty received %d bytes, expected %d", got, NWRITE * NBYTE);
     CHECK(got == NWRITE * NBYTE, msg);
     snprintf(msg, sizeof(msg), "strwrite returned %d bytes in total, expected %d", sum, got);
     CHECK(sum == got, msg);
-    snprintf(msg, sizeof(msg), "strsum outb=%d, expected %d", outb, got);
-    CHECK(outb == got, msg);
+    snprintf(msg, sizeof(msg), "strsum outb=%" PRIu64 ", expected %d", outb, got);
+    CHECK(outb == (uint64_t)got, msg);
     snprintf(msg, sizeof(msg), "strstat=%d after writes, expected 3 (active)", stat);
     CHECK(stat == 3, msg);
 
