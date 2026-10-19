@@ -25,10 +25,16 @@ START_WAIT = 2.0  # seconds for a relay to bind its ports
 ALIVE_WAIT = 3.0  # the second relay must survive this long
 
 
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+def free_ports(n):
+    """n distinct free ports: all sockets stay bound until every port is picked."""
+    socks = [socket.socket() for _ in range(n)]
+    try:
+        for s in socks:
+            s.bind(("127.0.0.1", 0))
+        return [s.getsockname()[1] for s in socks]
+    finally:
+        for s in socks:
+            s.close()
 
 
 def start_relay(mrtk, port_in, port_out):
@@ -63,7 +69,7 @@ def main():
         print(__doc__, file=sys.stderr)
         return 2
     mrtk = sys.argv[1]
-    port_in, port_out = free_port(), free_port()
+    port_in, port_out = free_ports(2)
 
     first = start_relay(mrtk, port_in, port_out)
     client = None
