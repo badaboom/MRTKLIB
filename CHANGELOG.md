@@ -74,6 +74,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   console `stream` command now reads the counters through `strsum()` (under
   the stream lock) and prints them as unsigned 64-bit values, as does the
   `mrtk relay` status line. New unit test `utest_stream_bytes`.
+- `saveopts()` now returns an error for a `.toml` file in append mode
+  instead of reporting success without writing anything. In the `mrtk run`
+  console, `save <file>.toml` therefore reports "options save error" instead
+  of "options saved" for a file that lacks every positioning option
+  (interim fix for [#342](https://github.com/h-shiono/MRTKLIB/issues/342);
+  saving the full configuration to TOML follows in v0.7.13). Use a `.conf`
+  file to save the full configuration until then.
 
 ## [v0.7.11] - 2026-09-29
 
