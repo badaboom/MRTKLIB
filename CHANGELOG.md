@@ -54,6 +54,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checks it is in the library
   ([#367](https://github.com/h-shiono/MRTKLIB/issues/367)). New ctest
   `stream_tcpsvr_rebind`.
+- Serial streams: `strwrite()` returned 0 for every successful serial write,
+  so the `mrtk run` console showed 0 output bytes/bps for serial outputs and
+  write-only serial outputs never became active. `writeserial()` now returns
+  the bytes written; a full output buffer (`EAGAIN`) or a short write no
+  longer marks the port as failed
+  ([#343](https://github.com/h-shiono/MRTKLIB/issues/343)). The
+  `strwrite()` doc now states the byte-count return. New unit test
+  `utest_stream_serial` (pseudo-terminal pair).
 
 ## [v0.7.11] - 2026-09-29
 
