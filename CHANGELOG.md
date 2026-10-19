@@ -37,6 +37,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `claslib_l6_null_drop_*` insert synthetic null frames into the 2019 and
   2025 CLAS files and require `mrtk dump` output identical to the clean
   file; `utest_l6_route` covers the receiver paths.
+- RINEX 2 navigation: QZSS PRNs 98/99 (J198/J199) were read as GPS and
+  dropped; the 2-digit QZSS extension range is now 93..99 as in claslib
+  0.9.0 ([#347](https://github.com/h-shiono/MRTKLIB/issues/347)). New unit
+  test `utest_t_rinex2_qzs`.
+- CLAS: `clas_update_global()` skips a signal mode outside 1..`MAXCODE`
+  instead of indexing the bias arrays with it (defensive, as claslib 0.9.0;
+  [#348](https://github.com/h-shiono/MRTKLIB/issues/348)).
+- u-blox: the `-OUT_QZSSL6` debug counter of UBX-RXM-QZSSL6 no longer writes
+  out of bounds for svId ≥ 16
+  ([#364](https://github.com/h-shiono/MRTKLIB/issues/364)).
 
 ## [v0.7.11] - 2026-09-29
 

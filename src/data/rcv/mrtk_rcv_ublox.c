@@ -1327,7 +1327,7 @@ static int decode_rxmsfrb(raw_t* raw) {
 }
 /* decode UBX-RXM-QZSSL6: QZSS L6 message ------------------------------------*/
 static int decode_rxmqzssl6(raw_t* raw, rtcm_t* rtcm) {
-    static int count[16][2] = {{0}};
+    static int count[16][2] = {{0}}; /* -OUT_QZSSL6 debug counts per svId */
     uint8_t* p = raw->buff + 6;
     double cn0, time;
     char buff[1024] = "", *q = buff;
@@ -1349,7 +1349,7 @@ static int decode_rxmqzssl6(raw_t* raw, rtcm_t* rtcm) {
         sprintf(raw->msgtype, "UBX RXM-QZSSL6(%4d): ver=%d prn=%2d msg=%s cn0=%.1f nerr=%2d stat=%d", raw->len, ver,
                 prn, msg ? "L6E" : "L6D", cn0, nerr, stat);
     }
-    if (strstr(raw->opt, "-OUT_QZSSL6")) {
+    if (strstr(raw->opt, "-OUT_QZSSL6") && prn - 192 < 16) {
         if (stat >= 1) {
             count[prn - 192][stat == 1 ? 0 : 1]++;
         }
