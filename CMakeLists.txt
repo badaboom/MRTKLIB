@@ -887,6 +887,26 @@ set_tests_properties(claslib_cleanup PROPERTIES
     LABELS           "regression;claslib"
 )
 
+# ── CLAS L6 null messages are dropped (#344) ─────────────────────────────────
+# No capture contains a null message: synthetic null frames are inserted into
+# the real 2019 (1 ch) and 2025 (ch1) L6 files at every subframe position, and
+# mrtk dump must decode them byte-identically to the clean file.
+foreach(_l6 2019239Q:sept_2019239 2025157U_ch1:0627157U)
+    string(REPLACE ":" ";" _l6 ${_l6})
+    list(GET _l6 0 _l6file)
+    list(GET _l6 1 _l6nav)
+    add_test(NAME claslib_l6_null_drop_${_l6file}
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/tests/check_l6_null_drop.py
+            $<TARGET_FILE:mrtk> ${_CLSDATA}/${_l6file}.l6 ${_CLSDATA}/${_l6nav}.nav
+            ${CMAKE_BINARY_DIR}/claslib_l6_null_drop
+    )
+    set_tests_properties(claslib_l6_null_drop_${_l6file} PROPERTIES
+        FIXTURES_REQUIRED claslib_data
+        TIMEOUT           60
+        LABELS            "regression;claslib"
+    )
+endforeach()
+
 # ── rnx2rtkp CLAS PPP-RTK regression (L6, RINEX obs) ─────────────────────────
 # Data: 2019/08/27 16:00-17:00, 0627239Q.obs + sept_2019239.nav + 2019239Q.l6
 # Reference: ref_L6.nmea (upstream claslib output)

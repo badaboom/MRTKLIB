@@ -26,15 +26,23 @@
  *   - clas_input_cssr(): a MADOCA / QZNMA frame must leave the CLAS subframe
  *     assembly and delivery state untouched (D3), using the real frames in
  *     l6_frames.bin (CLAS, MADOCA, MADOCA iono, QZNMA);
+ *   - clas_input_cssr(): a null message (#344), alone or inside a CLAS
+ *     subframe, must leave the assembly and delivery state untouched;
  *   - rtksvr_ssr_applicable(): in CLAS mode MADOCA SSR from a raw L6E stream
  *     (code 10) or a UBX/SBF L6E frame (code 15) must not be applied to
  *     nav.ssr_ch[0], while RTCM3 SSR still is (D4).
+ * Null messages (#344): no capture contains one, so the real fixtures are
+ * rewritten in memory with every L6 frame replaced by a null message (UBX
+ * checksum / SBF CRC recomputed). L6D null frames must route nowhere (no 10:
+ * the CLAS demux would read msgid 0 as transmit pattern 0); L6E null frames go
+ * to the MADOCA decoder, which reports the alert without decoding (no 15).
  * Also checks the auxiliary L6 PRN table.
  *
  * Explicit CHECK macro (not assert) so it is robust under -DNDEBUG.
  *-----------------------------------------------------------------------------*/
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "mrtklib/mrtk_clas.h"
 #include "mrtklib/rtklib.h"
@@ -49,24 +57,43 @@ static int fails = 0;
         }                                \
     } while (0)
 
-/* feed a fixture through a receiver decoder; count return codes 10/15/16/17.
+/* read a whole fixture into a heap buffer; returns its length, 0 on error */
+static long read_file(const char* file, uint8_t** buf) {
+    FILE* fp = fopen(file, "rb");
+    long len;
+
+    *buf = NULL;
+    if (!fp) return 0;
+    fseek(fp, 0, SEEK_END);
+    len = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    if (len <= 0 || !(*buf = (uint8_t*)malloc(len)) || fread(*buf, 1, len, fp) != (size_t)len) {
+        free(*buf);
+        *buf = NULL;
+        len = 0;
+    }
+    fclose(fp);
+    return len;
+}
+
+/* feed a stream through a receiver decoder; count return codes 10/15/16/17.
  * n[0] counts SBF 10/16 results whose raw->ephsat is not the block satellite */
-static int route_file(const char* file, int format, int* n) {
+static int route_buf(const uint8_t* buf, long len, int format, int* n) {
     raw_t* raw = (raw_t*)calloc(1, sizeof(raw_t));
     rtcm_t* rtcm = (rtcm_t*)calloc(1, sizeof(rtcm_t)); /* ~7.5 MB: heap only */
-    FILE* fp;
-    int c, ret;
+    long i;
+    int ret;
 
     n[0] = n[10] = n[15] = n[16] = n[17] = 0;
-    if (!raw || !rtcm || !(fp = fopen(file, "rb"))) {
+    if (!raw || !rtcm) {
         free(raw);
         free(rtcm);
         return 0;
     }
     init_raw(raw, format);
     init_rtcm(rtcm);
-    while ((c = fgetc(fp)) != EOF) {
-        ret = format == STRFMT_UBX ? input_ubx(raw, rtcm, (uint8_t)c) : input_sbf(raw, rtcm, (uint8_t)c);
+    for (i = 0; i < len; i++) {
+        ret = format == STRFMT_UBX ? input_ubx(raw, rtcm, buf[i]) : input_sbf(raw, rtcm, buf[i]);
         if (ret >= 10 && ret <= 17) n[ret]++;
         /* SBF QZSRawL6: SVID at block byte 14, prn = svid - 180 + 192 */
         if (format == STRFMT_SEPT && (ret == 10 || ret == 16) &&
@@ -74,12 +101,100 @@ static int route_file(const char* file, int format, int* n) {
             n[0]++;
         }
     }
-    fclose(fp);
     free_rtcm(rtcm);
     free_raw(raw);
     free(raw);
     free(rtcm);
     return 1;
+}
+
+static int route_file(const char* file, int format, int* n) {
+    uint8_t* buf;
+    long len = read_file(file, &buf);
+    int ok = len > 0 && route_buf(buf, len, format, n);
+
+    free(buf);
+    return ok;
+}
+
+/* overwrite an L6 frame (L6_FRAME_LEN bytes from the preamble) with a null
+ * message, keeping the preamble and PRN */
+static void make_null(uint8_t* frame) {
+    frame[5] = 0;
+    memset(frame + 6, 0xAA, L6_FRAME_LEN - 6);
+}
+
+/* replace every L6 frame of a UBX / SBF stream with a null message; returns
+ * the number of frames replaced */
+static int nullify_stream(uint8_t* buf, long len, int format) {
+    uint8_t frame[L6_FRAME_LEN];
+    long i = 0, n;
+    int k, nnull = 0, id;
+
+    while (i + 8 <= len) {
+        if (format == STRFMT_UBX) {
+            if (buf[i] != 0xB5 || buf[i + 1] != 0x62) {
+                i++;
+                continue;
+            }
+            n = buf[i + 4] | (buf[i + 5] << 8);
+            if (i + 8 + n > len) break;
+            if (buf[i + 2] == 0x02 && buf[i + 3] == 0x73 && n >= 14 + L6_RAW_LEN) {
+                uint8_t a = 0, b = 0;
+                make_null(buf + i + 6 + 14);
+                for (k = 2; k < 6 + n; k++) a += buf[i + k], b += a;
+                buf[i + 6 + n] = a;
+                buf[i + 7 + n] = b;
+                nnull++;
+            }
+            i += 8 + n;
+        } else {
+            if (buf[i] != '$' || buf[i + 1] != '@') {
+                i++;
+                continue;
+            }
+            id = (buf[i + 4] | (buf[i + 5] << 8)) & 0x1FFF;
+            n = buf[i + 6] | (buf[i + 7] << 8);
+            if (n < 8 || i + n > len) break;
+            if ((id == 4069 || id == 4270 || id == 4271) && n >= 272) {
+                /* NAVBits from block byte 20: big-endian 32-bit words stored
+                 * little-endian, so frame byte j sits at 20 + 4(j/4) + 3 - j%4 */
+                uint16_t crc;
+                for (k = 0; k < L6_FRAME_LEN; k++) frame[k] = buf[i + 20 + 4 * (k / 4) + 3 - k % 4];
+                make_null(frame);
+                for (k = 0; k < L6_FRAME_LEN; k++) buf[i + 20 + 4 * (k / 4) + 3 - k % 4] = frame[k];
+                crc = rtk_crc16(buf + i + 4, (int)n - 4);
+                buf[i + 2] = crc & 0xFF;
+                buf[i + 3] = crc >> 8;
+                nnull++;
+            }
+            i += n;
+        }
+    }
+    return nnull;
+}
+
+/* #344: null messages from a receiver container. All frames of the fixture are
+ * nulled; L6D must give no 10 / 16, L6E no 15, QZNMA none */
+static void test_route_null(const char* file, int format, int nframe) {
+    uint8_t* buf;
+    long len = read_file(file, &buf);
+    int n[18], nnull;
+    char msg[160];
+
+    if (!len) {
+        snprintf(msg, sizeof(msg), "%s: open", file);
+        CHECK(0, msg);
+        return;
+    }
+    nnull = nullify_stream(buf, len, format);
+    snprintf(msg, sizeof(msg), "%s: %d frames nulled, expected %d", file, nnull, nframe);
+    CHECK(nnull == nframe, msg);
+    CHECK(route_buf(buf, len, format, n), "route_buf: alloc");
+    snprintf(msg, sizeof(msg), "%s (null): 10=%d 15=%d 16=%d 17=%d, expected none", file, n[10], n[15], n[16], n[17]);
+    CHECK(n[10] == 0 && n[15] == 0 && n[16] == 0 && n[17] == 0, msg);
+    free(buf);
+    printf("ok  : %-22s null frames routed nowhere (%d)\n", file, nnull);
 }
 
 static void test_route(const char* file, int format, int n10, int n16, int n17, int need15) {
@@ -151,6 +266,45 @@ static void test_clas_input_reject(void) {
     printf("ok  : clas_input_cssr rejects MADOCA / iono / QZNMA frames\n");
 }
 
+/* #344: a null message on a CLAS input is dropped, before and inside a
+ * subframe, without touching the assembly or delivery state */
+static void test_clas_input_null(void) {
+    uint8_t clas[L6_FRAME_LEN], null[L6_FRAME_LEN];
+    clas_ctx_t* ctx = (clas_ctx_t*)calloc(1, sizeof(clas_ctx_t));
+    clas_l6buf_t* l6;
+    FILE* fp;
+    int i, ok;
+
+    if (!ctx || !(fp = fopen("l6_frames.bin", "rb"))) {
+        CHECK(0, "clas_input_cssr null: setup");
+        free(ctx);
+        return;
+    }
+    ok = fread(clas, 1, sizeof(clas), fp) == sizeof(clas);
+    fclose(fp);
+    if (!ok) {
+        CHECK(0, "clas_input_cssr null: read l6_frames.bin");
+        free(ctx);
+        return;
+    }
+    memcpy(null, clas, sizeof(null)); /* PRN 195 */
+    make_null(null);
+    l6 = &ctx->l6buf[0];
+    ctx->l6delivery[0] = ctx->l6facility[0] = -1;
+
+    for (i = 0; i < L6_RAW_LEN; i++) clas_input_cssr(ctx, i < L6_FRAME_LEN ? null[i] : 0, 0);
+    CHECK(ctx->l6delivery[0] == -1 && ctx->l6facility[0] == -1, "null frame leaves delivery state untouched");
+    CHECK(l6->decode_start == 0 && l6->nframe == 0 && l6->havebit == 0, "null frame starts no subframe");
+
+    for (i = 0; i < L6_RAW_LEN; i++) clas_input_cssr(ctx, i < L6_FRAME_LEN ? clas[i] : 0, 0);
+    ctx->l6facility[0] = 99; /* a null frame (msgid 0) must not overwrite it */
+    for (i = 0; i < L6_RAW_LEN; i++) clas_input_cssr(ctx, i < L6_FRAME_LEN ? null[i] : 0, 0);
+    CHECK(ctx->l6delivery[0] == 195 && ctx->l6facility[0] == 99 && l6->nframe == 1 && l6->havebit == L6_DATA_BITS,
+          "null frame inside a CLAS subframe is skipped");
+    free(ctx);
+    printf("ok  : clas_input_cssr drops null frames\n");
+}
+
 /* D4: SSR ownership of nav.ssr_ch[0] in CLAS mode */
 static void test_ssr_applicable(void) {
     rtksvr_t* svr = (rtksvr_t*)calloc(1, sizeof(rtksvr_t)); /* ~51 MB: heap only */
@@ -212,7 +366,11 @@ int main(void) {
     test_route("l6route_ubx_iono.ubx", STRFMT_UBX, 0, 30, 0, 0); /* D1 */
     test_route("l6route_sbf_197.sbf", STRFMT_SEPT, 30, 0, 0, 0); /* D2 */
     test_route("l6route_sbf_src0.sbf", STRFMT_SEPT, 30, 0, 0, 0);
+    test_route_null("l6route_d9c.ubx", STRFMT_UBX, 60);
+    test_route_null("l6route_mcla.sbf", STRFMT_SEPT, 30);
+    test_route_null("l6route_g5.sbf", STRFMT_SEPT, 120);
     test_clas_input_reject();
+    test_clas_input_null();
     test_ssr_applicable();
     if (fails) {
         printf("%d check(s) FAILED\n", fails);
