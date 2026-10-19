@@ -47,6 +47,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - u-blox: the `-OUT_QZSSL6` debug counter of UBX-RXM-QZSSL6 no longer writes
   out of bounds for svId ≥ 16
   ([#364](https://github.com/h-shiono/MRTKLIB/issues/364)).
+- `mrtk relay` / `mrtk run`: server sockets (`tcpsvr://`, UDP server) now
+  set `SO_REUSEADDR`, so a restart while a client is still connected no
+  longer fails with "stream server start error" for ~60 s. The
+  `SVR_REUSEADDR` define was set on the `mrtk` executable, but the code that
+  checks it is in the library
+  ([#367](https://github.com/h-shiono/MRTKLIB/issues/367)). New ctest
+  `stream_tcpsvr_rebind`.
 
 ## [v0.7.11] - 2026-09-29
 

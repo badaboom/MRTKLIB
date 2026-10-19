@@ -143,6 +143,10 @@ target_compile_options(mrtklib PRIVATE -std=c11)
 target_compile_definitions(mrtklib PUBLIC
     ENAGLO ENAGAL ENAQZS ENACMP ENAIRN NFREQ=5 NEXOBS=5 TRACE
 )
+# Server sockets (tcpsvr/udpsvr in mrtk_stream.c) set SO_REUSEADDR so a
+# restarted relay/run can rebind while an old connection is in FIN-WAIT-2
+# (#367). The #ifdef is in the library, so the define must be on mrtklib.
+target_compile_definitions(mrtklib PRIVATE SVR_REUSEADDR)
 target_link_libraries(mrtklib PUBLIC m)
 if(UNIX AND NOT APPLE)
     target_link_libraries(mrtklib PUBLIC rt)
@@ -224,7 +228,6 @@ add_executable(mrtk
     apps/l6extract/l6extract.c
 )
 target_include_directories(mrtk PRIVATE apps/rtkrcv)
-target_compile_definitions(mrtk PRIVATE SVR_REUSEADDR)
 target_link_libraries(mrtk PRIVATE mrtklib pthread)
 target_link_options(mrtk PRIVATE $<$<OR:$<PLATFORM_ID:Linux>,$<PLATFORM_ID:FreeBSD>>:-rdynamic>)
 
@@ -410,6 +413,13 @@ add_test(NAME l6extract_names
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/tests/check_l6extract.py
         $<TARGET_FILE:mrtk> ${_UTEST_DIR} ${CMAKE_BINARY_DIR}/l6extract_names)
 set_tests_properties(l6extract_names PROPERTIES TIMEOUT 60 LABELS "utest")
+
+# tcpsvr rebind after a restart with a client still connected: SO_REUSEADDR
+# must reach the library's server sockets (#367).
+add_test(NAME stream_tcpsvr_rebind
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/tests/check_tcpsvr_rebind.py
+        $<TARGET_FILE:mrtk>)
+set_tests_properties(stream_tcpsvr_rebind PROPERTIES TIMEOUT 60 LABELS "utest;stream")
 
 # ── Regression test data ─────────────────────────────────────────────────────
 set(_TESTDATA  ${CMAKE_SOURCE_DIR}/tests/data/malib)
