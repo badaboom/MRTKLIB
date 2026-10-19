@@ -178,7 +178,8 @@ int strread(stream_t* stream, uint8_t* buff, int n);
  * @param[in,out] stream  stream struct
  * @param[in]     buff    data buffer
  * @param[in]     n       data length (bytes)
- * @return status (0:error,1:ok)
+ * @return bytes written (0: nothing written or error; some stream types
+ *         return -1 on error)
  */
 int strwrite(stream_t* stream, uint8_t* buff, int n);
 

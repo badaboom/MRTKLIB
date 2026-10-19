@@ -364,6 +364,14 @@ add_test(NAME utest_l6_route COMMAND utest_l6_route
          WORKING_DIRECTORY ${_UTEST_DIR})
 set_tests_properties(utest_l6_route PROPERTIES LABELS "utest")
 
+# Serial stream write byte count over a pseudo-terminal pair (#343).
+add_executable(utest_stream_serial ${_UTEST_DIR}/utest_stream_serial.c)
+# Override global -ansi (=C90): this test uses C11 (P-01).
+target_compile_options(utest_stream_serial PRIVATE -std=c11)
+target_link_libraries(utest_stream_serial PRIVATE mrtklib)
+add_test(NAME utest_stream_serial COMMAND utest_stream_serial)
+set_tests_properties(utest_stream_serial PROPERTIES TIMEOUT 30 LABELS "utest;stream")
+
 # NTRIP v2 chunked codec test (header-only, no library dependency)
 add_executable(t_ntrip ${_UTEST_DIR}/t_ntrip.c)
 # Override global -ansi (=C90) for this target, same as mrtklib target.
